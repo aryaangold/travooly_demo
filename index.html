@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travooly - Interactive Content Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Professional Blues & Grays (Tailwind Sky, Slate) -->
+    <!-- Application Structure Plan: The SPA is a dashboard with an interactive calendar as its core. A side panel contains strategic filters (by content type and pillar) and a summary chart, allowing users to analyze the content mix. Clicking a day on the calendar opens a modal with detailed post information, including a 'copy hashtags' feature. This structure transforms the static source table into a multi-dimensional analysis tool, enabling users to explore the plan chronologically, thematically, or by content format, which is far more usable for strategic planning and execution. -->
+    <!-- Visualization & Content Choices: 
+    - Report Info: Travooly's 30-day content plan. Goal: Make the strategy interactive and easy to analyze.
+    - Viz/Presentation 1: Interactive Calendar Grid (HTML/Tailwind/JS). Interaction: Click for details, hover highlights. Justification: Most intuitive way to view a monthly schedule.
+    - Viz/Presentation 2: Content Type Donut Chart (Chart.js/Canvas). Interaction: Hover tooltips, legend toggles. Justification: Provides a quick, data-driven summary of the content format distribution.
+    - Viz/Presentation 3: Detail Modal (HTML/Tailwind/JS). Interaction: View full copy, copy hashtags to clipboard. Justification: Offers a focused view of a single post's content without losing context of the overall calendar.
+    - Library/Method: Vanilla JS for DOM manipulation and state management, Chart.js for data visualization. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f9ff; /* sky-50 */
+        }
+        .calendar-day {
+            min-height: 120px;
+            transition: all 0.2s ease-in-out;
+        }
+        .calendar-day.highlight {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 3px #0ea5e9; /* sky-500 */
+            z-index: 10;
+        }
+        .filter-btn-active {
+            background-color: #0c4a6e; /* sky-900 */
+            color: white;
+            border-color: #0c4a6e;
+        }
+        .modal-slide {
+            border-left: 3px solid #38bdf8; /* sky-400 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 300px;
+        }
+    </style>
+</head>
+<body class="text-slate-900">
+
+    <div id="app" class="p-4 md:p-8 max-w-screen-2xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl md:text-5xl font-bold text-sky-900">Travooly Content Strategy Dashboard</h1>
+            <p class="text-lg text-slate-600 mt-2">Your 30-day plan to dominate the relocation conversation.</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Left Panel: Controls & Analysis -->
+            <aside class="lg:w-1/3 xl:w-1/4 bg-white p-6 rounded-2xl shadow-lg border border-slate-200 self-start sticky top-8">
+                <h2 class="text-2xl font-bold mb-4 text-sky-900">Strategic Analysis</h2>
+                <p class="text-slate-600 mb-6 text-sm">This dashboard visualizes the 30-day content plan. Use the filters to highlight posts by type or pillar, and click any day on the calendar to see the full post details.</p>
+                
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="font-semibold mb-3 text-sky-800">Filter by Content Type</h3>
+                        <div id="type-filters" class="flex flex-wrap gap-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold mb-3 text-sky-800">Filter by Content Pillar</h3>
+                        <div id="pillar-filters" class="flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-6 border-t border-slate-200">
+                    <h3 class="font-semibold mb-3 text-center text-sky-800">Content Type Distribution</h3>
+                    <div class="chart-container">
+                        <canvas id="typeChart"></canvas>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Panel: Calendar -->
+            <main class="lg:w-2/3 xl:w-3/4">
+                 <div class="bg-white p-4 sm:p-6 rounded-2xl shadow-lg border border-slate-200">
+                    <div class="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-slate-500 mb-2">
+                        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                    </div>
+                    <div id="calendar-grid" class="grid grid-cols-7 gap-2">
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="detail-modal" class="fixed inset-0 bg-black bg-opacity-70 hidden items-center justify-center p-4 z-50 transition-opacity duration-300">
+        <div id="modal-content" class="bg-white w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col transform scale-95 transition-transform duration-300">
+            <div class="p-6 border-b border-slate-200 flex justify-between items-start">
+                <div>
+                    <p id="modal-day" class="text-sm font-bold text-sky-600"></p>
+                    <h2 id="modal-title" class="text-2xl font-bold text-slate-900 leading-tight"></h2>
+                </div>
+                <button id="close-modal-btn" class="text-3xl text-slate-400 hover:text-slate-800">&times;</button>
+            </div>
+            <div id="modal-body" class="p-6 overflow-y-auto">
+                <div id="modal-copy" class="space-y-4"></div>
+                <div class="mt-6">
+                    <h3 class="font-semibold mb-3 text-lg text-sky-800">Hashtags</h3>
+                    <div class="flex items-center gap-3">
+                         <p id="modal-hashtags" class="text-sm text-slate-600 bg-sky-50 p-3 rounded-lg flex-grow"></p>
+                         <button id="copy-hashtags-btn" class="bg-sky-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-sky-800 transition-colors whitespace-nowrap">Copy Tags</button>
+                    </div>
+                    <div id="copy-feedback" class="text-center pt-2 text-sm font-medium text-green-600 opacity-0 transition-opacity">Copied!</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const contentData = [
+                { day: 1, type: "Reel (UGC)", hook: "From Naija to [Global City]: Living the Dream.", copy: `<strong>Video:</strong> Short, punchy video snippets of successful Nigerian immigrants in various global cities, showing their achievements (e.g., in office, with family, enjoying a new hobby). Fast cuts, inspiring music.<br><strong>Copy:</strong> "They left, they dared, they conquered. This isn't just relocation; it's elevation. We celebrate the incredible Nigerians making big moves globally! Your journey to 'Big Tinz' starts with Travooly."`, hashtags: "#ImmigrantsDoingBigTinz #DiasporaSuccess #GlobalNigerian #RelocationGoals #Travooly", pillar: "Success Stories" },
+                { day: 2, type: "Carousel", hook: "5 Reasons Your 'Japa' Dream Isn't Just a Dream.", copy: `<strong>Slide 1:</strong> "5 Reasons Your 'Japa' Dream Isn't Just a Dream."<br><strong>Slide 2:</strong> "Reason 1: Unparalleled Educational Opportunities..."<br><strong>Slide 3:</strong> "Reason 2: Accelerated Career Growth..."<br><strong>Slide 4:</strong> "Reason 3: Enhanced Quality of Life..."<br><strong>Slide 5:</strong> "Reason 4: Cultural Immersion & Diversity..."<br><strong>Slide 6:</strong> "Reason 5: Personal Growth & Adventure..."<br><strong>Slide 7:</strong> "Your reasons are valid. Your journey is possible. Let Travooly guide you."`, hashtags: "#JapaGoals #RelocationBenefits #StudyAbroad #WorkAbroad #NewBeginnings #Travooly", pillar: "Benefits & Reasons" },
+                { day: 3, type: "Single Design", hook: "From Doubt to Delight: [Client Name]'s Story.", copy: `<strong>Graphic:</strong> A visually appealing graphic with a powerful quote from a satisfied client.<br><strong>Copy:</strong> "� 'Travooly made my dream of studying in Canada a reality. Their guidance was invaluable!' - Bola A. 🌟 Your success is our mission. We turn aspirations into achievements..."`, hashtags: "#TravoolyTestimonial #ClientSuccess #StudyCanada #HappyClient #RelocationExpert", pillar: "Testimonials" },
+                { day: 4, type: "Reel (Motion Design)", hook: "Visa Denied? NOT on Our Watch.", copy: `<strong>Video:</strong> Dynamic text animation showing common visa rejection reasons (e.g., "Incomplete Docs," "Wrong Category," "Interview Nerves") then transitions to "Travooly's Solution."<br><strong>Copy:</strong> "Visa struggles are real, but they don't have to be YOUR reality... Let us turn it into a 'YES!'"`, hashtags: "#VisaStruggles #VisaHelp #ImmigrationTips #VisaSuccess #Travooly", pillar: "Visa & Struggles" },
+                { day: 5, type: "Carousel", hook: "Life in the UK: Expectation vs. Reality.", copy: `<strong>Slide 1:</strong> "Life in the UK: Expectation vs. Reality."<br><strong>Slide 2:</strong> "Expectation: Constant sunshine... Reality: Four seasons in one day..."<br><strong>Slide 3:</strong> "Expectation: Jobs are everywhere... Reality: Competitive market..."<br><strong>Slide 4:</strong> "Expectation: Everything is expensive... Reality: Smart budgeting..."<br><strong>Slide 5:</strong> "Expectation: Tea and crumpets daily... Reality: Diverse culinary scene..."<br><strong>Slide 6:</strong> "Navigating a new country requires real insights. We give you the unfiltered truth..."`, hashtags: "#LifeInTheUK #UKImmigration #RelocationTips #CultureShock #TravoolyInsights", pillar: "Life Abroad" },
+                { day: 6, type: "Carousel", hook: "Canada Calling: Your Path to Permanent Residency.", copy: `<strong>Slide 1:</strong> "Canada Calling: Your Path to Permanent Residency."<br><strong>Slide 2:</strong> "Route 1: Express Entry..."<br><strong>Slide 3:</strong> "Route 2: Provincial Nominee Programs (PNP)..."<br><strong>Slide 4:</strong> "Route 3: Family Sponsorship..."<br><strong>Slide 5:</strong> "Route 4: Study Permit leading to PR..."<br><strong>Slide 6:</strong> "Each route has specific requirements. We help you identify the best fit..."`, hashtags: "#CanadaImmigration #ExpressEntry #PNP #StudyCanada #PermanentResidency #TravoolyGuide", pillar: "Country Guides" },
+                { day: 7, type: "Single Design", hook: "Study in Germany: Why It's Your Smartest Move.", copy: `<strong>Graphic:</strong> A bold graphic stating a key benefit (e.g., "Low/No Tuition Fees").<br><strong>Copy:</strong> "Did you know many public universities in Germany offer FREE or very low tuition fees for international students? 🎓🇩🇪 High-quality education without the debt burden..."`, hashtags: "#StudyGermany #TuitionFree #InternationalStudent #GermanyEducation #TravoolyBenefits", pillar: "Benefits & Reasons" },
+                { day: 8, type: "Reel (UGC)", hook: "The Day I Landed: My First Impressions.", copy: `<strong>Video:</strong> A short video of a real immigrant sharing their raw, emotional first impressions upon landing in their new country...<br><strong>Copy:</strong> "That feeling when you finally land! ✨ Our 'Immigration Chronicles' series brings you authentic stories... Share your 'first impressions' moment in the comments!"`, hashtags: "#ImmigrationChronicles #FirstImpressions #NewCountry #RelocationJourney #TravoolyStories", pillar: "Immigration Chronicles" },
+                { day: 9, type: "Carousel", hook: "UK Immigration: Fact or Fiction?", copy: `<strong>Slide 1:</strong> "UK Immigration: Fact or Fiction?"<br><strong>Slide 2:</strong> "Myth: It's impossible to get a UK visa now. Fact: While strict, specific routes... are very active."<br><strong>Slide 3:</strong> "Myth: You need a job offer before moving... Fact: Some routes require it, but others, like Graduate visa..."<br><strong>Slide 4:</strong> "Myth: Healthcare is free for everyone. Fact: You pay an Immigration Health Surcharge..."<br><strong>Slide 5:</strong> "Don't rely on hearsay. Get accurate, up-to-date information from Travooly."`, hashtags: "#UKImmigration #ImmigrationFacts #UKVisa #StudyUK #WorkUK #TravoolyTruth", pillar: "Facts & Myths" },
+                { day: 10, type: "Reel (Motion Design)", hook: "From Lagos Hustle to London Bliss.", copy: `<strong>Video:</strong> A split-screen or quick transition video showing a person's "before" life... and "after" life...<br><strong>Copy:</strong> "The transformation is real! 🚀 See how relocation can redefine your life... Ready for your 'Before vs After' story?"`, hashtags: "#BeforeVsAfter #RelocationTransformation #LifeUpgrade #LondonLife #TravoolyJourney", pillar: "Before & After" },
+                { day: 11, type: "Single Design", hook: "My Biggest Relocation Regret Was...", copy: `<strong>Graphic:</strong> A bold, intriguing question on a minimalist background.<br><strong>Copy:</strong> "What's the one thing you wish you knew *before* you relocated? Share your 'greatest regret' (or lesson learned!) in the comments..."`, hashtags: "#RelocationRegret #LessonsLearned #ImmigrationAdvice #TravoolyCommunity #ShareYourStory", pillar: "Regrets & Lessons" },
+                { day: 12, type: "Carousel", hook: "Unlock Your Potential: Study in the USA.", copy: `<strong>Slide 1:</strong> "Unlock Your Potential: Study in the USA."<br><strong>Slide 2:</strong> "Benefit 1: Academic Excellence & Diversity..."<br><strong>Slide 3:</strong> "Benefit 2: Cutting-Edge Research..."<br><strong>Slide 4:</strong> "Benefit 3: Cultural Immersion..."<br><strong>Slide 5:</strong> "Benefit 4: Strong Career Prospects..."<br><strong>Slide 6:</strong> "Your American dream starts with the right guidance."`, hashtags: "#StudyUSA #InternationalStudent #USAEducation #StudentVisa #TravoolyGuide", pillar: "Country Guides" },
+                { day: 13, type: "Carousel", hook: "Meet [Name]: From [Origin] to [Achievement].", copy: `<strong>Slide 1:</strong> "Meet Dr. Adaobi: From Lagos to Leading Research in Biotech, UK."<br><strong>Slide 2:</strong> "Her Journey: 'It wasn't easy...'"<br><strong>Slide 3:</strong> "Her 'Big Tinz': 'Leading a team...'"<br><strong>Slide 4:</strong> "Advice: 'Do your research...'"<br><strong>Slide 5:</strong> "Dr. Adaobi's story is one of many..."`, hashtags: "#ImmigrantsDoingBigTinz #SuccessStories #UKImmigration #Biotech #TravoolyInspiration", pillar: "Success Stories" },
+                { day: 14, type: "Carousel", hook: "5 Reasons Why Australia Should Be Your Next Home.", copy: `<strong>Slide 1:</strong> "5 Reasons Why Australia Should Be Your Next Home."<br><strong>Slide 2:</strong> "Reason 1: World-Class Cities & Lifestyle..."<br><strong>Slide 3:</strong> "Reason 2: Breathtaking Natural Beauty..."<br><strong>Slide 4:</strong> "Reason 3: Robust Economy & Job Market..."<br><strong>Slide 5:</strong> "Dreaming of the Land Down Under? Travooly can make it a reality."`, hashtags: "#MoveToAustralia #AustraliaImmigration #OzLife #RelocationBenefits #Travooly", pillar: "Benefits & Reasons" },
+                { day: 15, type: "Reel (UGC)", hook: "Hear It From Them: Travooly Success Stories.", copy: `<strong>Video:</strong> A compilation of short, genuine video testimonials from happy clients...<br><strong>Copy:</strong> "Don't just take our word for it! ✨ Our clients' smiles are our greatest reward... Ready for your success story?"`, hashtags: "#TravoolyReviews #ClientLove #SuccessJourney #VisaApproved #RelocationMadeEasy", pillar: "Testimonials" },
+                { day: 16, type: "Carousel", hook: "Visa Application Errors: Are YOU Making Them?", copy: `<strong>Slide 1:</strong> "Visa Application Errors: Are YOU Making Them?"<br><strong>Slide 2:</strong> "Mistake 1: Incomplete Documentation..."<br><strong>Slide 3:</strong> "Mistake 2: Inconsistent Information..."<br><strong>Slide 4:</strong> "Mistake 3: Poorly Written SOP..."<br><strong>Slide 5:</strong> "Avoid these pitfalls! Our experts meticulously review every detail..."`, hashtags: "#VisaTips #VisaApplication #ImmigrationMistakes #AvoidRejection #TravoolyGuidance", pillar: "Visa & Struggles" },
+                { day: 17, type: "Reel (UGC)", hook: "A Day in the Life of a Nigerian Student in Manchester.", copy: `<strong>Video:</strong> A short, authentic video showing a Nigerian student's typical day in a UK city...<br><strong>Copy:</strong> "Ever wondered what 'Life in the UK' is *really* like for a student? Join [Student Name] as they take us through a day in Manchester!"`, hashtags: "#LifeInTheUK #StudyUK #NigerianInUK #StudentLife #Manchester #Travooly", pillar: "Life Abroad" },
+                { day: 18, type: "Carousel", hook: "Germany: Your Gateway to Europe. Visa Routes Explained.", copy: `<strong>Slide 1:</strong> "Germany: Your Gateway to Europe. Visa Routes Explained."<br><strong>Slide 2:</strong> "Route 1: Student Visa..."<br><strong>Slide 3:</strong> "Route 2: Job Seeker Visa..."<br><strong>Slide 4:</strong> "Route 3: EU Blue Card/Skilled Worker Visa..."<br><strong>Slide 5:</strong> "Germany offers diverse pathways. Find the one that fits your aspirations..."`, hashtags: "#GermanyVisa #StudyGermany #WorkGermany #EUBlueCard #RelocationRoutes #Travooly", pillar: "Country Guides" },
+                { day: 19, type: "Carousel", hook: "Family First: Why Canada is Perfect for Your Loved Ones.", copy: `<strong>Slide 1:</strong> "Family First: Why Canada is Perfect for Your Loved Ones."<br><strong>Slide 2:</strong> "Benefit 1: Top-Tier Education System..."<br><strong>Slide 3:</strong> "Benefit 2: Universal Healthcare..."<br><strong>Slide 4:</strong> "Benefit 3: Safe & Welcoming Communities..."<br><strong>Slide 5:</strong> "Give your family the best. Canada offers a bright future for all..."`, hashtags: "#FamilyRelocation #MoveToCanada #CanadaLife #ParentingAbroad #TravoolyFamily", pillar: "Benefits & Reasons" },
+                { day: 20, type: "Single Design", hook: "The Toughest Part Was... But I Made It.", copy: `<strong>Graphic:</strong> A powerful, relatable quote from an immigrant about overcoming a challenge.<br><strong>Copy:</strong> "Every journey has its bumps... What was your toughest hurdle, and how did you conquer it? Share your resilience story!"`, hashtags: "#ImmigrationChronicles #Resilience #OvercomingChallenges #TravoolyCommunity #Motivation", pillar: "Immigration Chronicles" },
+                { day: 21, type: "Carousel", hook: "My Wallet: Before vs. After Relocation.", copy: `<strong>Slide 1:</strong> "My Wallet: Before vs. After Relocation."<br><strong>Slide 2:</strong> "Before: High living costs, stagnant salary..."<br><strong>Slide 3:</strong> "After: Better earning potential, smart budgeting..."<br><strong>Slide 4:</strong> "Relocation can be a game-changer for your finances... We help you understand the economic landscape..."`, hashtags: "#FinancialFreedom #CostOfLiving #SalaryIncrease #RelocationFinance #TravoolyTips", pillar: "Before & After" },
+                { day: 22, type: "Reel (UGC)", hook: "Confessions of a Relocated Nigerian.", copy: `<strong>Video:</strong> Quick, anonymous video snippets... of people sharing their 'greatest relocation regret'...<br><strong>Copy:</strong> "We asked, you answered! 🎤 Real talk about the 'greatest relocation regrets.'... What would you add?"`, hashtags: "#RelocationConfessions #ImmigrantLife #RegretsAndLessons #TravoolyRealTalk", pillar: "Regrets & Lessons" },
+                { day: 23, type: "Carousel", hook: "Study Abroad: Separating Fact from Fiction.", copy: `<strong>Slide 1:</strong> "Study Abroad: Separating Fact from Fiction."<br><strong>Slide 2:</strong> "Myth: It's only for the super-rich. Fact: Scholarships, part-time jobs..."<br><strong>Slide 3:</strong> "Myth: You'll be lonely... Fact: Universities offer robust support systems..."<br><strong>Slide 4:</strong> "Don't let myths hold you back... Get the facts from Travooly."`, hashtags: "#StudyAbroadFacts #StudentMyths #InternationalEducation #ScholarshipOpportunities #TravoolyTruth", pillar: "Facts & Myths" },
+                { day: 24, type: "Single Design", hook: "USA: More Than Just the Green Card. Explore Your Route.", copy: `<strong>Graphic:</strong> A simple graphic highlighting diverse US visa categories...<br><strong>Copy:</strong> "The USA offers a mosaic of opportunities, each with its own pathway... Your American dream, demystified by Travooly."`, hashtags: "#USAVisa #GreenCard #StudyUSA #WorkUSA #ImmigrationRoutes #Travooly", pillar: "Country Guides" },
+                { day: 25, type: "Carousel", hook: "Parents, This Is Why the UK is Right for Your Children.", copy: `<strong>Slide 1:</strong> "Parents, This Is Why the UK is Right for Your Children."<br><strong>Slide 2:</strong> "Benefit 1: World-Class Education..."<br><strong>Slide 3:</strong> "Benefit 2: NHS Healthcare..."<br><strong>Slide 4:</strong> "Benefit 3: Safe & Diverse Environment..."<br><strong>Slide 5:</strong> "Give your children the best start. The UK offers a nurturing environment..."`, hashtags: "#UKForFamilies #ParentingAbroad #ChildrensEducation #FamilyRelocation #TravoolyParents", pillar: "Benefits & Reasons" },
+                { day: 26, type: "Reel (Motion Design)", hook: "From Zero to Global Hero: The Immigrant Grind.", copy: `<strong>Video:</strong> Fast-paced montage of images/icons representing the journey: struggle, hard work, learning, networking, success.<br><strong>Copy:</strong> "The journey of an immigrant is paved with grit, resilience, and unwavering determination..."`, hashtags: "#ImmigrantGrind #Resilience #GlobalCitizen #SuccessMindset #Travooly", pillar: "Success Stories" },
+                { day: 27, type: "Carousel", hook: "5 Reasons Travooly is Your Ultimate Relocation Partner.", copy: `<strong>Slide 1:</strong> "5 Reasons Travooly is Your Ultimate Relocation Partner."<br><strong>Slide 2:</strong> "Reason 1: Unrivaled Expertise..."<br><strong>Slide 3:</strong> "Reason 2: Personalized Approach..."<br><strong>Slide 4:</strong> "Reason 3: Transparent Process..."<br><strong>Slide 5:</strong> "Choose confidence. Choose clarity. Choose Travooly..."`, hashtags: "#WhyTravooly #RelocationPartner #ImmigrationExperts #TrustedService #YourJourneyOurPriority", pillar: "Brand Trust" },
+                { day: 28, type: "Carousel", hook: "My First Year Abroad: The Unfiltered Truth.", copy: `<strong>Slide 1:</strong> "My First Year Abroad: The Unfiltered Truth."<br><strong>Slide 2:</strong> "Month 1-3: Culture shock..."<br><strong>Slide 3:</strong> "Month 4-6: Landing my first job..."<br><strong>Slide 4:</strong> "Month 7-9: Overcoming homesickness..."<br><strong>Slide 5:</strong> "Month 10-12: Feeling settled..."<br><strong>Slide 6:</strong> "The first year is a rollercoaster... Share your experiences!"`, hashtags: "#FirstYearAbroad #ImmigrantLife #RelocationChallenges #NewHome #TravoolyStories", pillar: "Immigration Chronicles" },
+                { day: 29, type: "Single Design", hook: "Real People. Real Journeys. Real Success.", copy: `<strong>Graphic:</strong> A visually engaging graphic teasing upcoming video testimonials...<br><strong>Copy:</strong> "Every visa approved, every relocation completed, is a life transformed... Stay tuned for more inspiring stories!"`, hashtags: "#TravoolySuccess #ClientVoices #RelocationDreams #VisaApproved #TrustedPartner", pillar: "Testimonials" },
+                { day: 30, type: "Reel (Motion Design)", hook: "Your Global Journey Starts NOW.", copy: `<strong>Video:</strong> Dynamic text and light animation showing Travooly's services... Clear call to action.<br><strong>Copy:</strong> "Stop dreaming, start doing... Click the link in bio for a FREE consultation and let's map out YOUR global journey!"`, hashtags: "#Travooly #RelocationExperts #StudyAbroad #WorkAbroad #JapaWithTravooly #YourFuture", pillar: "Brand Trust" }
+            ];
+
+            const calendarGrid = document.getElementById('calendar-grid');
+            const typeFiltersContainer = document.getElementById('type-filters');
+            const pillarFiltersContainer = document.getElementById('pillar-filters');
+            const modal = document.getElementById('detail-modal');
+            const modalContent = document.getElementById('modal-content');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            
+            let currentFilter = { type: 'all', key: 'all' };
+
+            const typeIcons = {
+                'Reel (UGC)': '📸',
+                'Carousel': '🖼️',
+                'Single Design': '🎨',
+                'Reel (Motion Design)': '🎬'
+            };
+
+            function createFilterButtons(container, filterKey, data) {
+                const categories = ['all', ...new Set(data.map(item => item[filterKey]))];
+                container.innerHTML = categories.map(cat => `
+                    <button data-filter="${cat}" data-key="${filterKey}" class="filter-btn border border-slate-300 px-3 py-1 rounded-full text-sm font-medium hover:bg-sky-100 hover:border-sky-300 transition-colors ${cat === 'all' ? 'filter-btn-active' : ''}">
+                        ${cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    </button>
+                `).join('');
+            }
+            
+            function renderCalendar() {
+                calendarGrid.innerHTML = '';
+                // Calendar starts on Friday, July 1st, 2025
+                const startDayOffset = 5; 
+                for (let i = 0; i < startDayOffset; i++) {
+                    calendarGrid.innerHTML += '<div class="bg-slate-50 rounded-lg"></div>';
+                }
+
+                contentData.forEach(item => {
+                    const dayElement = document.createElement('div');
+                    dayElement.className = `calendar-day relative border border-slate-200 bg-white rounded-lg p-3 flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-sky-400`;
+                    dayElement.dataset.day = item.day;
+                    dayElement.dataset.type = item.type;
+                    dayElement.dataset.pillar = item.pillar;
+
+                    const dayMatchesFilter = (currentFilter.type === 'all' || item[currentFilter.key] === currentFilter.type);
+                    dayElement.style.opacity = dayMatchesFilter ? '1' : '0.4';
+
+                    dayElement.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-slate-700">${item.day}</span>
+                            <span class="text-xl" title="${item.type}">${typeIcons[item.type] || '📄'}</span>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-2 font-medium">${item.hook}</p>
+                        <span class="text-xs text-sky-700 font-semibold bg-sky-100 px-2 py-0.5 rounded-full self-start mt-2">${item.pillar}</span>
+                    `;
+                    
+                    dayElement.addEventListener('click', () => showDetails(item.day));
+                    calendarGrid.appendChild(dayElement);
+                });
+            }
+
+            function showDetails(day) {
+                const data = contentData.find(item => item.day === day);
+                if (!data) return;
+
+                document.getElementById('modal-day').textContent = `Day ${data.day} • ${data.pillar}`;
+                document.getElementById('modal-title').textContent = data.hook;
+                document.getElementById('modal-copy').innerHTML = `<p class="text-slate-700">${data.copy}</p>`;
+                document.getElementById('modal-hashtags').textContent = data.hashtags;
+                
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                setTimeout(() => {
+                    modalContent.classList.remove('scale-95');
+                }, 10);
+            }
+
+            function hideDetails() {
+                modalContent.classList.add('scale-95');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                }, 200);
+            }
+
+            function applyFilter(key, type) {
+                currentFilter = { key, type };
+                
+                document.querySelectorAll('.filter-btn').forEach(btn => {
+                    if (btn.dataset.key === key) {
+                        if (btn.dataset.filter === type) {
+                            btn.classList.add('filter-btn-active');
+                        } else {
+                            btn.classList.remove('filter-btn-active');
+                        }
+                    } else {
+                        // Reset other filter group to 'all'
+                        if(btn.dataset.filter === 'all') {
+                           btn.classList.add('filter-btn-active');
+                        } else {
+                           btn.classList.remove('filter-btn-active');
+                        }
+                    }
+                });
+                renderCalendar();
+            }
+
+            function renderTypeChart() {
+                const typeCounts = contentData.reduce((acc, item) => {
+                    const simpleType = item.type.split('(')[0].trim();
+                    acc[simpleType] = (acc[simpleType] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const ctx = document.getElementById('typeChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(typeCounts),
+                        datasets: [{
+                            data: Object.values(typeCounts),
+                            backgroundColor: ['#38bdf8', '#7dd3fc', '#e0f2fe'], // sky-400, sky-300, sky-100
+                            borderColor: '#ffffff',
+                            borderWidth: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 12 } } }
+                        },
+                        cutout: '60%'
+                    }
+                });
+            }
+
+            document.getElementById('copy-hashtags-btn').addEventListener('click', () => {
+                const hashtags = document.getElementById('modal-hashtags').textContent;
+                navigator.clipboard.writeText(hashtags).then(() => {
+                    const feedback = document.getElementById('copy-feedback');
+                    feedback.classList.add('opacity-100');
+                    setTimeout(() => feedback.classList.remove('opacity-100'), 2000);
+                });
+            });
+
+            document.querySelectorAll('#type-filters, #pillar-filters').forEach(container => {
+                container.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('filter-btn')) {
+                        applyFilter(e.target.dataset.key, e.target.dataset.filter);
+                    }
+                });
+            });
+
+            closeModalBtn.addEventListener('click', hideDetails);
+            modal.addEventListener('click', (e) => e.target === modal && hideDetails());
+            
+            createFilterButtons(typeFiltersContainer, 'type', contentData);
+            createFilterButtons(pillarFiltersContainer, 'pillar', contentData);
+            renderCalendar();
+            renderTypeChart();
+        });
+    </script>
+</body>
+</html>
+�
